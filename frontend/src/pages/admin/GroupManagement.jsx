@@ -58,9 +58,8 @@ const FilterDropdown = ({
         <span>{selected || title}</span>
         <ChevronDown
           size={20}
-          className={`transform transition-transform duration-200 ${
-            isOpen ? "rotate-180" : "rotate-0"
-          } text-accent-teal`}
+          className={`transform transition-transform duration-200 ${isOpen ? "rotate-180" : "rotate-0"
+            } text-accent-teal`}
         />
       </button>
       {isOpen && (
@@ -71,11 +70,10 @@ const FilterDropdown = ({
                 key={index}
                 onClick={() => handleSelect(option)}
                 onKeyPress={(e) => e.key === "Enter" && handleSelect(option)}
-                className={`px-4 py-2 cursor-pointer transition-colors duration-200 text-white ${
-                  selected === option
-                    ? "bg-accent-teal font-bold"
-                    : "hover:bg-accent-teal/50"
-                }`}
+                className={`px-4 py-2 cursor-pointer transition-colors duration-200 text-white ${selected === option
+                  ? "bg-accent-teal font-bold"
+                  : "hover:bg-accent-teal/50"
+                  }`}
                 tabIndex={0}
               >
                 {option}
@@ -126,7 +124,7 @@ function GroupManagement() {
           `${API_BASE_URL}/guides/active`,
           { headers }
         );
-        setGuides(guidesResponse.data);
+        setGuides(Array.isArray(guidesResponse.data) ? guidesResponse.data : []);
 
         // Fetch groups with filters
         const groupsResponse = await axios.get(`${API_BASE_URL}/groups`, {
@@ -183,28 +181,16 @@ function GroupManagement() {
     if (!selectedGroup) return [];
     try {
       const headers = { Authorization: `Bearer ${adminToken}` };
-      const classNameParts =
-        selectedGroup.members[0]?.className.split(" ") || [];
-      const groupCourse = classNameParts[0];
-      const groupSemester = parseInt(classNameParts[1], 10);
-      const groupYear = selectedGroup.year;
-
       const response = await axios.get(
         `${API_BASE_URL}/groups/${selectedGroup._id}/students/available`,
-        {
-          headers,
-          params: {
-            course: groupCourse,
-            semester: groupSemester,
-            year: groupYear,
-          },
-        }
+        { headers }
       );
       return response.data;
     } catch (error) {
       setErrorMessage("Failed to fetch available students.");
       setTimeout(() => setErrorMessage(""), 3000);
       console.error("Error fetching available students:", error);
+      console.error("Error response:", error.response?.data);
       return [];
     }
   };
@@ -387,10 +373,30 @@ function GroupManagement() {
 
     if (selectedGroup) {
       try {
-        const students = await getAvailableStudents();
-        setAvailableStudents(students);
+        // If group has no members, we need to provide course/semester info
+        if (!selectedGroup.members || selectedGroup.members.length === 0) {
+          // Use filter values as fallback
+          const course = selectedClassFilter !== "All" ? selectedClassFilter.split(" ")[0] : "MCA";
+          const semester = selectedClassFilter !== "All" ? parseInt(selectedClassFilter.split(" ")[1]) : 3;
+          const year = selectedYearFilter !== "All Years" ? parseInt(selectedYearFilter) : 2024;
+
+          const headers = { Authorization: `Bearer ${adminToken}` };
+          const response = await axios.get(
+            `${API_BASE_URL}/groups/${selectedGroup._id}/students/available`,
+            {
+              headers,
+              params: { course, semester, year }
+            }
+          );
+          setAvailableStudents(response.data);
+        } else {
+          const students = await getAvailableStudents();
+          setAvailableStudents(students);
+        }
       } catch (error) {
         console.error("Error fetching available students:", error);
+        setErrorMessage("Failed to fetch available students. Please try again.");
+        setTimeout(() => setErrorMessage(""), 3000);
       }
     }
   };
@@ -516,12 +522,7 @@ function GroupManagement() {
             </h2>
             <button
               onClick={handleOpenAddStudentModal}
-              disabled={!hasMembers}
-              className={`flex items-center bg-gradient-to-r from-accent-teal to-cyan-500 text-white py-2 px-4 sm:px-3 rounded-lg font-semibold transition duration-200 shadow-neumorphic border border-white/20 backdrop-blur-sm animate-pulse-once ${
-                !hasMembers
-                  ? "opacity-50 cursor-not-allowed"
-                  : "hover:bg-opacity-90 hover:scale-105"
-              }`}
+              className="flex items-center bg-gradient-to-r from-accent-teal to-cyan-500 text-white py-2 px-4 sm:px-3 rounded-lg font-semibold transition duration-200 shadow-neumorphic border border-white/20 backdrop-blur-sm animate-pulse-once hover:bg-opacity-90 hover:scale-105"
               aria-label="Add student"
             >
               <Plus size={20} className="mr-2" /> Add Student
