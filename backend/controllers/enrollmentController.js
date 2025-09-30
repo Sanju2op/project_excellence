@@ -1,6 +1,5 @@
 import Enrollment from "../models/enrollment.js";
 import Division from "../models/division.js";
-import Student from "../models/student.js";
 
 // GET /api/enrollments - Get all enrollments
 export const getAllEnrollments = async (req, res) => {
@@ -24,21 +23,8 @@ export const getEnrollmentsByDivision = async (req, res) => {
       "course semester year"
     );
 
-    // For each enrollment, check if student exists and update isRegistered and studentName
-    const enrollmentsWithStudentData = await Promise.all(
-      enrollments.map(async (enrollment) => {
-        const student = await Student.findOne({
-          enrollmentNumber: enrollment.enrollmentNumber,
-        });
-        return {
-          ...enrollment.toObject(),
-          isRegistered: !!student,
-          studentName: student ? student.studentName : null,
-        };
-      })
-    );
-
-    res.json(enrollmentsWithStudentData);
+    // Enrollment already has isRegistered and studentName
+    res.json(enrollments);
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -56,12 +42,10 @@ export const createEnrollment = async (req, res) => {
     }
 
     if (!/^[A-Za-z]+\d{7}$/.test(enrollmentNumber)) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Enrollment number must be like BCA2025001 (letters followed by 7 digits)",
-        });
+      return res.status(400).json({
+        message:
+          "Enrollment number must be like BCA2025001 (letters followed by 7 digits)",
+      });
     }
 
     // Check if enrollment already exists
@@ -103,12 +87,10 @@ export const generateEnrollments = async (req, res) => {
     const endNum = parseInt(end);
 
     if (startNum < 1 || endNum < startNum || endNum > 999) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Invalid range! Start must be >= 1, end must be > start and <= 999.",
-        });
+      return res.status(400).json({
+        message:
+          "Invalid range! Start must be >= 1, end must be > start and <= 999.",
+      });
     }
 
     const division = await Division.findById(divisionId);
@@ -133,12 +115,10 @@ export const generateEnrollments = async (req, res) => {
     }
 
     if (newEnrollments.length === 0) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "No new enrollments generated! All numbers in range already exist.",
-        });
+      return res.status(400).json({
+        message:
+          "No new enrollments generated! All numbers in range already exist.",
+      });
     }
 
     const savedEnrollments = await Enrollment.insertMany(newEnrollments);

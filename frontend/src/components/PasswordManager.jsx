@@ -143,7 +143,7 @@ function PasswordManager({
         </div>
 
         <div className="flex gap-4 mb-5 justify-center">
-          {["change", "forgot", "reset"].map((m) => (
+          {["forgot", "reset"].map((m) => (
             <button
               key={m}
               onClick={() => {

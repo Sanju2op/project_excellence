@@ -1,20 +1,5 @@
 import mongoose from "mongoose";
 
-const memberSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-  },
-  enrollment: {
-    type: String,
-    required: true,
-  },
-  className: {
-    type: String,
-    required: true,
-  },
-});
-
 const groupSchema = new mongoose.Schema(
   {
     name: {
@@ -53,7 +38,12 @@ const groupSchema = new mongoose.Schema(
       min: 2020,
       max: 2030,
     },
-    members: [memberSchema],
+    members: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Enrollment",
+      },
+    ],
     status: {
       type: String,
       enum: ["Not Started", "In Progress", "Completed"],

@@ -35,7 +35,7 @@ router.patch("/me/active", protectGuide, async (req, res) => {
 
 // admin-only route
 router.get("/", protectAdmin, getAllGuides);
-router.get("/active", protectAdmin, getActiveGuides); // Get only active guides for dropdowns
+router.get("/active", getActiveGuides); // Get only active guides for dropdowns
 router.patch("/:id", protectAdmin, updateGuide);
 router.patch("/:id/status", protectAdmin, updateGuideStatus);
 router.patch("/:id/active", protectAdmin, updateGuideAvailability); // Admin toggles any guide

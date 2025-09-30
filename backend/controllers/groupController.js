@@ -1,6 +1,5 @@
 import Group from "../models/group.js";
 import Guide from "../models/guide.js";
-import Student from "../models/student.js";
 import Division from "../models/division.js";
 import Enrollment from "../models/enrollment.js";
 
@@ -10,7 +9,7 @@ export const getAllGroups = async (req, res) => {
     const { course, year, guide } = req.query;
     let filter = {};
 
-    if (course) filter["members.className"] = new RegExp(`^${course}`, "i");
+    // Note: course filter removed as members are now refs, need aggregation for complex filter
     if (year) filter.year = year;
     if (guide) filter.guide = guide;
 
@@ -28,10 +27,10 @@ export const getAllGroups = async (req, res) => {
 export const getGroupById = async (req, res) => {
   try {
     const { id } = req.params;
-    const group = await Group.findById(id).populate(
-      "guide",
-      "name email expertise mobile"
-    );
+    const group = await Group.findById(id)
+      .populate("guide", "name email expertise mobile")
+      .populate("members", "enrollmentNumber studentName divisionId")
+      .populate("members.divisionId", "course semester year");
 
     if (!group) {
       return res.status(404).json({ message: "Group not found" });
@@ -122,7 +121,45 @@ export const updateGroup = async (req, res) => {
       if (members.length < 3 || members.length > 4) {
         return res.status(400).json({ message: "Group must have 3-4 members" });
       }
-      updateData.members = members;
+
+      // Resolve members to Enrollment _ids
+      const resolvedMembers = [];
+      for (const member of members) {
+        let enrollmentId;
+        if (typeof member === "string") {
+          // Assume it's already an _id
+          enrollmentId = member;
+        } else if (member.enrollment || member.enrollmentNumber) {
+          // Find by enrollmentNumber
+          const enrollmentNum = member.enrollment || member.enrollmentNumber;
+          const enrollment = await Enrollment.findOne({
+            enrollmentNumber: enrollmentNum,
+          });
+          if (!enrollment) {
+            return res
+              .status(400)
+              .json({ message: `Enrollment ${enrollmentNum} not found` });
+          }
+          if (!enrollment.isRegistered) {
+            return res.status(400).json({
+              message: `Student ${enrollmentNum} is not registered`,
+            });
+          }
+          enrollmentId = enrollment._id;
+        } else {
+          return res.status(400).json({ message: "Invalid member format" });
+        }
+        resolvedMembers.push(enrollmentId);
+      }
+
+      // Check for duplicates
+      if (new Set(resolvedMembers).size !== resolvedMembers.length) {
+        return res
+          .status(400)
+          .json({ message: "Duplicate members not allowed" });
+      }
+
+      updateData.members = resolvedMembers;
     }
 
     const updatedGroup = await Group.findByIdAndUpdate(id, updateData, {
@@ -156,60 +193,85 @@ export const deleteGroup = async (req, res) => {
   }
 };
 
-// GET /api/groups/:id/students/available - Get available students for a group
 export const getAvailableStudents = async (req, res) => {
   try {
     const { id } = req.params;
-    const group = await Group.findById(id);
+    const { course, year, semester } = req.query;
+
+    const group = await Group.findById(id).populate(
+      "members",
+      "enrollmentNumber divisionId"
+    );
 
     if (!group) {
       return res.status(404).json({ message: "Group not found" });
     }
 
-    // Get group's course and semester from first member
-    const firstMember = group.members[0];
-    if (!firstMember) {
-      return res
-        .status(400)
-        .json({ message: "Group has no members to determine course" });
+    // Build filter for divisions based on query params
+    let divisionFilter = {};
+    if (course) divisionFilter.course = course;
+    if (year) divisionFilter.year = parseInt(year);
+    // Note: Not filtering by semester to allow students from all semesters in the same course and year
+
+    // Get divisions matching the filter
+    const divisions = await Division.find(divisionFilter);
+    if (divisions.length === 0) {
+      console.log(
+        `No divisions found for filter: ${JSON.stringify(divisionFilter)}`
+      );
+      return res.json([]);
     }
-
-    const classParts = firstMember.className.split(" ");
-    const course = classParts[0];
-    const semester = parseInt(classParts[1]);
-
-    // Get all students in matching divisions
-    const divisions = await Division.find({
-      course,
-      semester,
-      year: group.year,
-      status: "active",
-    });
     const divisionIds = divisions.map((d) => d._id);
 
-    // Get all enrolled students in these divisions
+    // Get all enrolled students in these divisions who are registered
     const enrollments = await Enrollment.find({
       divisionId: { $in: divisionIds },
       isRegistered: true,
-    });
+    }).populate("divisionId", "course semester year");
 
-    // Get students already in groups
-    const groups = await Group.find({});
-    const assignedEnrollments = groups.flatMap((g) =>
-      g.members.map((m) => m.enrollment)
+    if (enrollments.length === 0) {
+      console.log(`No enrollments found for divisions: ${divisionIds}`);
+      return res.json([]);
+    }
+
+    // Get all existing groups to find assigned enrollments
+    const allGroups = await Group.find({}).populate(
+      "members",
+      "enrollmentNumber"
+    );
+    const assignedEnrollments = allGroups.flatMap((g) =>
+      g.members.map((m) => m.enrollmentNumber)
     );
 
-    // Filter available students
+    // Exclude current group's members
+    const currentGroupEnrollments = group.members.map(
+      (m) => m.enrollmentNumber
+    );
+
+    // Filter out students already in any group, and exclude current group's members
     const availableStudents = enrollments
-      .filter((e) => !assignedEnrollments.includes(e.enrollmentNumber))
+      .filter(
+        (e) =>
+          !assignedEnrollments.includes(e.enrollmentNumber) &&
+          !currentGroupEnrollments.includes(e.enrollmentNumber)
+      )
       .map((e) => ({
         enrollmentNumber: e.enrollmentNumber,
-        name: e.studentName,
-        className: `${course} ${semester}`,
+        name: e.studentName || "Unknown Student",
+        className: `${e.divisionId.course} ${e.divisionId.semester}`,
       }));
+
+    console.log(
+      `Found ${
+        availableStudents.length
+      } available students for group ${id} with filter ${JSON.stringify(
+        divisionFilter
+      )}`
+    );
 
     res.json(availableStudents);
   } catch (error) {
+    console.error("Error in getAvailableStudents:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
