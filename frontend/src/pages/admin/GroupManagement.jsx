@@ -183,62 +183,33 @@ function GroupManagement() {
       !selectedGroup ||
       !selectedGroup.members ||
       selectedGroup.members.length === 0 ||
-      !selectedGroup.members[0]?.className
+      !selectedGroup.members[0]?.divisionId
     )
       return [];
     try {
       const headers = { Authorization: `Bearer ${adminToken}` };
-      const classNameParts = selectedGroup.members[0].className.split(" ");
-      const groupCourse = classNameParts[0];
-      const groupSemester = parseInt(classNameParts[1], 10);
+      const member = selectedGroup.members[0];
+      const groupCourse = member.divisionId.course;
+      const groupSemester = member.divisionId.semester;
       const groupYear = selectedGroup.year;
 
-      // Fetch divisions to find matching division
-      const divisionsResponse = await axios.get(`${API_BASE_URL}/divisions`, {
-        headers,
-      });
-      const divisions = divisionsResponse.data;
-      const matchingDivision = divisions.find(
-        (d) =>
-          d.course === groupCourse &&
-          d.semester === groupSemester &&
-          d.year === groupYear
-      );
-      if (!matchingDivision) return [];
-
-      // Fetch enrollments for the division
-      const enrollmentsResponse = await axios.get(
-        `${API_BASE_URL}/enrollments/division/${matchingDivision._id}`,
-        { headers }
-      );
-      const enrollments = enrollmentsResponse.data;
-
-      // Fetch all groups to get assigned enrollments
-      const groupsResponse = await axios.get(`${API_BASE_URL}/groups`, {
-        headers,
-      });
-      const allGroups = groupsResponse.data;
-      const assignedEnrollments = allGroups.flatMap((g) =>
-        g.members.map((m) => m.enrollmentNumber)
-      );
-      const currentGroupEnrollments = selectedGroup.members.map(
-        (m) => m.enrollmentNumber
+      // Use backend API to get available students
+      const response = await axios.get(
+        `${API_BASE_URL}/groups/${selectedGroup._id}/students/available`,
+        {
+          headers,
+          params: {
+            course: groupCourse,
+            semester: groupSemester,
+            year: groupYear,
+          },
+        }
       );
 
-      const available = enrollments.filter(
-        (e) =>
-          e.isRegistered &&
-          !assignedEnrollments.includes(e.enrollmentNumber) &&
-          !currentGroupEnrollments.includes(e.enrollmentNumber)
-      );
-
-      return available.map((e) => ({
-        _id: e._id,
-        enrollmentNumber: e.enrollmentNumber,
-        name: e.studentName || e.enrollmentNumber,
-        className: `${groupCourse} ${groupSemester}`,
-        divisionId: e.divisionId,
-        isRegistered: e.isRegistered,
+      return response.data.map((student) => ({
+        enrollmentNumber: student.enrollmentNumber,
+        name: student.name,
+        className: student.className,
       }));
     } catch (error) {
       console.error("Error fetching available students:", error);
@@ -402,7 +373,11 @@ function GroupManagement() {
       return;
     }
     if (selectedGroup.members.length + selectedStudents.length > 4) {
-      setErrorMessage("Cannot add more than 4 students to a group!");
+      setErrorMessage(
+        `Cannot add more than 4 students to a group! You can add up to ${
+          4 - selectedGroup.members.length
+        } more.`
+      );
       setTimeout(() => setErrorMessage(""), 3000);
       return;
     }
@@ -573,9 +548,9 @@ function GroupManagement() {
             </h2>
             <button
               onClick={handleOpenAddStudentModal}
-              disabled={!hasMembers}
+              disabled={!hasMembers || selectedGroup.members.length >= 4}
               className={`flex items-center bg-gradient-to-r from-accent-teal to-cyan-500 text-white py-2 px-4 sm:px-3 rounded-lg font-semibold transition duration-200 shadow-neumorphic border border-white/20 backdrop-blur-sm animate-pulse-once ${
-                !hasMembers
+                !hasMembers || selectedGroup.members.length >= 4
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:bg-opacity-90 hover:scale-105"
               }`}
@@ -602,11 +577,6 @@ function GroupManagement() {
                     <div className="text-sm text-white/80 flex items-center">
                       <Hash size={16} className="mr-1 text-accent-teal" />
                       <span>{member.enrollmentNumber}</span>
-                      <span className="ml-4">
-                        {member.divisionId
-                          ? `${member.divisionId.course} ${member.divisionId.semester}`
-                          : "N/A"}
-                      </span>
                     </div>
                   </div>
                 </div>
@@ -840,6 +810,9 @@ function GroupManagement() {
             <h2 className="text-2xl font-bold text-white mb-6 text-center tracking-tight">
               Add Student to Group
             </h2>
+            <p className="text-white/80 text-center mb-4">
+              You can select up to {4 - selectedGroup.members.length} students
+            </p>
             <div className="space-y-4 max-h-96 overflow-y-auto">
               {availableStudents.length > 0 ? (
                 availableStudents.map((student) => (
@@ -854,10 +827,15 @@ function GroupManagement() {
                         checked={selectedStudents.includes(
                           student.enrollmentNumber
                         )}
+                        disabled={
+                          selectedStudents.length >=
+                            4 - selectedGroup.members.length &&
+                          !selectedStudents.includes(student.enrollmentNumber)
+                        }
                         onChange={() =>
                           handleCheckboxChange(student.enrollmentNumber)
                         }
-                        className="mr-4 w-4 h-4 text-accent-teal bg-white/10 border-white/20 rounded focus:ring-accent-teal focus:ring-2"
+                        className="mr-4 w-4 h-4 text-accent-teal bg-white/10 border-white/20 rounded focus:ring-accent-teal focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <div>
                         <span className="font-semibold text-white">

@@ -1,6 +1,5 @@
 import Enrollment from "../models/enrollment.js";
 import Division from "../models/division.js";
-import Student from "../models/student.js";
 
 // GET /api/enrollments - Get all enrollments
 export const getAllEnrollments = async (req, res) => {
@@ -24,21 +23,8 @@ export const getEnrollmentsByDivision = async (req, res) => {
       "course semester year"
     );
 
-    // For each enrollment, check if student exists and update isRegistered and studentName
-    const enrollmentsWithStudentData = await Promise.all(
-      enrollments.map(async (enrollment) => {
-        const student = await Student.findOne({
-          enrollmentNumber: enrollment.enrollmentNumber,
-        });
-        return {
-          ...enrollment.toObject(),
-          isRegistered: !!student,
-          studentName: student ? student.studentName : null,
-        };
-      })
-    );
-
-    res.json(enrollmentsWithStudentData);
+    // Enrollment already has isRegistered and studentName
+    res.json(enrollments);
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
